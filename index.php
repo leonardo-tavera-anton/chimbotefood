@@ -1,3 +1,35 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>ChimboteFood SOA - Endpoints y Panel</title>
+    <style>
+        body { font-family: Arial, sans-serif; background: #f4f6f9; margin: 20px; color: #333; }
+        .container { max-width: 1100px; margin: 0 auto; background: #fff; padding: 25px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        h1, h2, h3 { color: #2c3e50; }
+        .endpoint-box { background: #e8f4fd; border-left: 4px solid #007bff; padding: 12px 15px; margin-bottom: 15px; border-radius: 4px; }
+        .endpoint-box code { background: #fff; padding: 3px 6px; border-radius: 3px; border: 1px solid #ccc; font-family: monospace; display: inline-block; margin-top: 5px; width: 100%; box-sizing: border-box; }
+        .method { font-weight: bold; padding: 2px 6px; border-radius: 3px; font-size: 12px; color: #fff; }
+        .get { background: #28a745; }
+        .post { background: #007bff; }
+        .alert-success { background: #d4edda; color: #155724; padding: 10px; border-radius: 4px; margin-bottom: 15px; }
+        .alert-error { background: #f8d7da; color: #721c24; padding: 10px; border-radius: 4px; margin-bottom: 15px; }
+        .grid { display: flex; gap: 20px; margin-bottom: 25px; }
+        .card { flex: 1; background: #f8f9fa; padding: 15px; border-radius: 6px; border: 1px solid #ddd; }
+        .form-group { margin-bottom: 10px; }
+        label { display: block; font-weight: bold; margin-bottom: 5px; font-size: 13px; }
+        input, select { width: 100%; padding: 8px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px; }
+        button { background: #28a745; color: white; border: none; padding: 10px; width: 100%; border-radius: 4px; cursor: pointer; font-weight: bold; }
+        button:hover { background: #218838; }
+        .btn-blue { background: #007bff; }
+        .btn-blue:hover { background: #0069d9; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; margin-bottom: 30px; font-size: 14px; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        th { background: #e9ecef; }
+        .soa-badge { background: #17a2b8; color: white; padding: 3px 8px; border-radius: 12px; font-size: 12px; float: right; }
+    </style>
+</head>
+<body>
 <?php
 $host = "localhost";
 $user = "root";
@@ -7,7 +39,7 @@ $dbname = "restaurante_db";
 $conexion = new mysqli($host, $user, $password, $dbname);
 
 if ($conexion->connect_error) {
-    die(json_encode(["status" => "error", "message" => "Error de conexión: " . $conexion->connect_error]));
+    die("<div class='container'><div class='alert-error'>Error de conexión: " . $conexion->connect_error . "</div></div>");
 }
 $conexion->set_charset("utf8mb4");
 
@@ -17,8 +49,6 @@ $conexion->set_charset("utf8mb4");
 if (isset($_GET['servicio'])) {
     header('Content-Type: application/json; charset=utf-8');
     
-    // --- MINI RETO: AUTENTICACIÓN Y AUTORIZACIÓN ---
-    // Simulación de seguridad: Solo consumidores identificados pueden acceder.
     $headers = apache_request_headers();
     $token = $headers['Authorization'] ?? '';
     
@@ -30,7 +60,6 @@ if (isset($_GET['servicio'])) {
         ]);
         exit();
     }
-    // -----------------------------------------------
 
     $servicio = $_GET['servicio'];
     $input = json_decode(file_get_contents('php://input'), true) ?? $_POST;
@@ -51,6 +80,48 @@ if (isset($_GET['servicio'])) {
             echo json_encode($res->fetch_all(MYSQLI_ASSOC));
             exit();
 
+        case 'ValidarCupon':
+            $codigo = strtoupper(trim($input['codigo_cupon'] ?? $_GET['codigo_cupon'] ?? ''));
+            $subtotal = (float)($input['subtotal'] ?? $_GET['subtotal'] ?? 0);
+
+            if (empty($codigo)) {
+                echo json_encode(["status" => "error", "message" => "Debe proporcionar un código de cupón."]);
+                exit();
+            }
+
+            $stmt = $conexion->prepare("SELECT * FROM cupones WHERE codigo = ? AND activo = 1");
+            $stmt->bind_param("s", $codigo);
+            $stmt->execute();
+            $resultado = $stmt->get_result();
+
+            if ($resultado->num_rows === 0) {
+                echo json_encode(["status" => "error", "message" => "El cupón no existe o está inactivo."]);
+                exit();
+            }
+
+            $cup = $resultado->fetch_assoc();
+            if ($subtotal < (float)$cup['monto_minimo']) {
+                echo json_encode([
+                    "status" => "error", 
+                    "message" => "El subtotal no cumple con el monto mínimo requerido de $" . $cup['monto_minimo']
+                ]);
+                exit();
+            }
+
+            $descuento = ($cup['tipo_descuento'] === 'porcentaje') 
+                ? $subtotal * ((float)$cup['valor_descuento'] / 100) 
+                : (float)$cup['valor_descuento'];
+
+            echo json_encode([
+                "status" => "success",
+                "message" => "Cupón aplicado correctamente",
+                "codigo" => $cup['codigo'],
+                "tipo" => $cup['tipo_descuento'],
+                "descuento_calculado" => $descuento,
+                "nuevo_total_estimado" => max(0, $subtotal - $descuento)
+            ]);
+            exit();
+
         case 'CrearPedido':
             $id_cliente = (int)($input['id_cliente'] ?? 0);
             $id_restaurante = (int)($input['id_restaurante'] ?? 0);
@@ -59,7 +130,6 @@ if (isset($_GET['servicio'])) {
             $codigo_cupon = strtoupper(trim($input['codigo_cupon'] ?? ''));
 
             if ($id_cliente > 0 && $id_restaurante > 0 && $subtotal > 0) {
-                // Lógica de "Caja Negra" (El consumidor no ve cómo se calcula el ETA o el descuento)
                 $cli = $conexion->query("SELECT distancia_km FROM clientes WHERE id_cliente = $id_cliente")->fetch_assoc();
                 $rest = $conexion->query("SELECT tiempo_preparacion_base FROM restaurantes WHERE id_restaurante = $id_restaurante")->fetch_assoc();
 
@@ -78,11 +148,11 @@ if (isset($_GET['servicio'])) {
 
                     if ($res_c->num_rows > 0) {
                         $cup = $res_c->fetch_assoc();
-                        if ($subtotal >= $cup['monto_minimo']) {
+                        if ($subtotal >= (float)$cup['monto_minimo']) {
                             $cupon_aplicado = $cup['codigo'];
                             $descuento = ($cup['tipo_descuento'] === 'porcentaje') 
-                                ? $subtotal * ($cup['valor_descuento'] / 100) 
-                                : $cup['valor_descuento'];
+                                ? $subtotal * ((float)$cup['valor_descuento'] / 100) 
+                                : (float)$cup['valor_descuento'];
                         }
                     }
                 }
@@ -93,7 +163,14 @@ if (isset($_GET['servicio'])) {
                 $stmt->bind_param("iisdsddi", $id_cliente, $id_restaurante, $producto, $subtotal, $cupon_aplicado, $descuento, $monto_total, $eta_total);
 
                 if ($stmt->execute()) {
-                    echo json_encode(["status" => "success", "message" => "Pedido creado exitosamente", "id_pedido" => $stmt->insert_id, "eta_minutos" => $eta_total]);
+                    echo json_encode([
+                        "status" => "success", 
+                        "message" => "Pedido y cupón procesados con éxito", 
+                        "id_pedido" => $stmt->insert_id, 
+                        "descuento_aplicado" => $descuento,
+                        "monto_final" => $monto_total,
+                        "eta_minutos" => $eta_total
+                    ]);
                 } else {
                     echo json_encode(["status" => "error", "message" => $conexion->error]);
                 }
@@ -109,7 +186,7 @@ if (isset($_GET['servicio'])) {
 }
 
 // =================================================================
-// 2. CAPA VISUAL: DASHBOARD DE ADMINISTRACIÓN INTERNA
+// 2. CAPA VISUAL: DASHBOARD DE ADMINISTRACIÓN Y LISTA DE ENDPOINTS
 // =================================================================
 $mensaje = "";
 $error = "";
@@ -161,35 +238,49 @@ $restaurantes_list = $conexion->query("SELECT * FROM restaurantes ORDER BY id_re
 $cupones_list = $conexion->query("SELECT * FROM cupones ORDER BY id_cupon DESC");
 $pedidos_list = $conexion->query("SELECT p.*, c.nombre_cliente, r.nombre_restaurante FROM pedidos p JOIN clientes c ON p.id_cliente = c.id_cliente JOIN restaurantes r ON p.id_restaurante = r.id_restaurante ORDER BY p.id_pedido DESC");
 ?>
-<!DOCTYPE html>
-<html lang="es">
-<head>
-    <meta charset="UTF-8">
-    <title>ChimboteFood SOA - Panel Administrativo</title>
-    <style>
-        body { font-family: Arial, sans-serif; background: #f4f6f9; margin: 20px; color: #333; }
-        .container { max-width: 1100px; margin: 0 auto; background: #fff; padding: 25px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-        h1, h2 { color: #2c3e50; }
-        .alert-success { background: #d4edda; color: #155724; padding: 10px; border-radius: 4px; margin-bottom: 15px; }
-        .alert-error { background: #f8d7da; color: #721c24; padding: 10px; border-radius: 4px; margin-bottom: 15px; }
-        .grid { display: flex; gap: 20px; margin-bottom: 25px; }
-        .card { flex: 1; background: #f8f9fa; padding: 15px; border-radius: 6px; border: 1px solid #ddd; }
-        .form-group { margin-bottom: 10px; }
-        label { display: block; font-weight: bold; margin-bottom: 5px; font-size: 13px; }
-        input, select { width: 100%; padding: 8px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px; }
-        button { background: #28a745; color: white; border: none; padding: 10px; width: 100%; border-radius: 4px; cursor: pointer; font-weight: bold; }
-        button:hover { background: #218838; }
-        .btn-blue { background: #007bff; }
-        .btn-blue:hover { background: #0069d9; }
-        table { width: 100%; border-collapse: collapse; margin-top: 10px; margin-bottom: 30px; font-size: 14px; }
-        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-        th { background: #e9ecef; }
-        .soa-badge { background: #17a2b8; color: white; padding: 3px 8px; border-radius: 12px; font-size: 12px; float: right; }
-    </style>
-</head>
-<body>
+
 <div class="container">
     <h1>Panel Proveedor ChimboteFood <span class="soa-badge">SOA Internal System</span></h1>
+    
+    <!-- SECCIÓN VISIBLE DE ENDPOINTS PARA POSTMAN -->
+    <div style="background: #f8f9fa; border: 1px solid #cbd3da; padding: 20px; border-radius: 6px; margin-bottom: 25px;">
+        <h2 style="margin-top: 0; color: #0056b3;">Catálogo de Endpoints SOA (Para Postman)</h2>
+        <p style="font-size: 13px; color: #555;">Recuerda enviar el Header obligatorio: <code>Authorization: Bearer chimbote_seguro_2026</code></p>
+        
+        <div class="endpoint-box">
+            <span class="method get">GET</span> <strong>1. Listar Clientes</strong>
+            <code>http://localhost/chimbotefood/index.php?servicio=ListarClientes</code>
+        </div>
+
+        <div class="endpoint-box">
+            <span class="method get">GET</span> <strong>2. Listar Restaurantes</strong>
+            <code>http://localhost/chimbotefood/index.php?servicio=ListarRestaurantes</code>
+        </div>
+
+        <div class="endpoint-box">
+            <span class="method get">GET</span> <strong>3. Listar Cupones</strong>
+            <code>http://localhost/chimbotefood/index.php?servicio=ListarCupones</code>
+        </div>
+
+        <div class="endpoint-box">
+            <span class="method get">GET</span> <strong>4. Validar Cupón (Parámetros URL)</strong>
+            <code>http://localhost/chimbotefood/index.php?servicio=ValidarCupon&codigo_cupon=OFERTA20&subtotal=50.00</code>
+        </div>
+
+        <div class="endpoint-box">
+            <span class="method post">POST</span> <strong>5. Validar Cupón (Body JSON)</strong>
+            <code>http://localhost/chimbotefood/index.php?servicio=ValidarCupon</code>
+            <small style="display:block; margin-top:5px; color:#666;">Payload JSON: <code>{"codigo_cupon": "OFERTA20", "subtotal": 50.00}</code></small>
+        </div>
+
+        <div class="endpoint-box">
+            <span class="method post">POST</span> <strong>6. Crear Pedido con Cupón (Body JSON)</strong>
+            <code>http://localhost/chimbotefood/index.php?servicio=CrearPedido</code>
+            <small style="display:block; margin-top:5px; color:#666;">Payload JSON: <code>{"id_cliente": 1, "id_restaurante": 1, "producto": "Pollo a la Brasa", "subtotal": 60.00, "codigo_cupon": "OFERTA20"}</code></small>
+        </div>
+    </div>
+    <!-- FIN DE LA SECCIÓN VISIBLE DE ENDPOINTS -->
+
     <?php if ($mensaje): ?><div class="alert-success"><?= $mensaje; ?></div><?php endif; ?>
     <?php if ($error): ?><div class="alert-error"><?= $error; ?></div><?php endif; ?>
 
