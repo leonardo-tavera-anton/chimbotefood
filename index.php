@@ -5,7 +5,7 @@
     <title>ChimboteFood SOA - Endpoints y Panel</title>
     <style>
         body { font-family: Arial, sans-serif; background: #f4f6f9; margin: 20px; color: #333; }
-        .container { max-width: 1100px; margin: 0 auto; background: #fff; padding: 25px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .container { max-width: 1200px; margin: 0 auto; background: #fff; padding: 25px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
         h1, h2, h3 { color: #2c3e50; }
         .endpoint-box { background: #e8f4fd; border-left: 4px solid #007bff; padding: 12px 15px; margin-bottom: 15px; border-radius: 4px; }
         .endpoint-box code { background: #fff; padding: 3px 6px; border-radius: 3px; border: 1px solid #ccc; font-family: monospace; display: inline-block; margin-top: 5px; width: 100%; box-sizing: border-box; }
@@ -14,8 +14,11 @@
         .post { background: #007bff; }
         .alert-success { background: #d4edda; color: #155724; padding: 10px; border-radius: 4px; margin-bottom: 15px; }
         .alert-error { background: #f8d7da; color: #721c24; padding: 10px; border-radius: 4px; margin-bottom: 15px; }
-        .grid { display: flex; gap: 20px; margin-bottom: 25px; }
-        .card { flex: 1; background: #f8f9fa; padding: 15px; border-radius: 6px; border: 1px solid #ddd; }
+        
+        /* Modificado para soportar 4 tarjetas que se adapten bien */
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 20px; margin-bottom: 25px; }
+        .card { background: #f8f9fa; padding: 15px; border-radius: 6px; border: 1px solid #ddd; }
+        
         .form-group { margin-bottom: 10px; }
         label { display: block; font-weight: bold; margin-bottom: 5px; font-size: 13px; }
         input, select { width: 100%; padding: 8px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px; }
@@ -23,6 +26,8 @@
         button:hover { background: #218838; }
         .btn-blue { background: #007bff; }
         .btn-blue:hover { background: #0069d9; }
+        .btn-warning { background: #ffc107; color: #212529; }
+        .btn-warning:hover { background: #e0a800; }
         table { width: 100%; border-collapse: collapse; margin-top: 10px; margin-bottom: 30px; font-size: 14px; }
         th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
         th { background: #e9ecef; }
@@ -224,6 +229,51 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt->bind_param("ssdd", $codigo, $tipo, $valor, $minimo);
             if ($stmt->execute()) { header("Location: index.php?status=cupon_ok"); exit(); } else { $error = "Error: " . $conexion->error; }
         }
+    } elseif ($action === 'crear_pedido') {
+        // Lógica para registrar pedidos desde la UI simulando la API
+        $id_cliente = (int)($_POST['id_cliente'] ?? 0);
+        $id_restaurante = (int)($_POST['id_restaurante'] ?? 0);
+        $producto = trim($_POST['producto'] ?? '');
+        $subtotal = (float)($_POST['subtotal'] ?? 0);
+        $codigo_cupon = strtoupper(trim($_POST['codigo_cupon'] ?? ''));
+
+        if ($id_cliente > 0 && $id_restaurante > 0 && $subtotal > 0 && !empty($producto)) {
+            $cli = $conexion->query("SELECT distancia_km FROM clientes WHERE id_cliente = $id_cliente")->fetch_assoc();
+            $rest = $conexion->query("SELECT tiempo_preparacion_base FROM restaurantes WHERE id_restaurante = $id_restaurante")->fetch_assoc();
+
+            $distancia = (float)($cli['distancia_km'] ?? 3.5);
+            $tiempo_prep = (int)($rest['tiempo_preparacion_base'] ?? 15);
+            $eta_total = $tiempo_prep + ceil($distancia * 4) + 5;
+
+            $descuento = 0.00;
+            $cupon_aplicado = NULL;
+
+            if (!empty($codigo_cupon)) {
+                $stmt_c = $conexion->prepare("SELECT * FROM cupones WHERE codigo = ? AND activo = 1");
+                $stmt_c->bind_param("s", $codigo_cupon);
+                $stmt_c->execute();
+                $res_c = $stmt_c->get_result();
+
+                if ($res_c->num_rows > 0) {
+                    $cup = $res_c->fetch_assoc();
+                    if ($subtotal >= (float)$cup['monto_minimo']) {
+                        $cupon_aplicado = $cup['codigo'];
+                        $descuento = ($cup['tipo_descuento'] === 'porcentaje') 
+                            ? $subtotal * ((float)$cup['valor_descuento'] / 100) 
+                            : (float)$cup['valor_descuento'];
+                    }
+                }
+            }
+
+            $monto_total = max(0, $subtotal - $descuento);
+
+            $stmt = $conexion->prepare("INSERT INTO pedidos (id_cliente, id_restaurante, producto, subtotal, codigo_cupon, descuento_aplicado, monto_total, eta_minutos_total) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
+            $stmt->bind_param("iisdsddi", $id_cliente, $id_restaurante, $producto, $subtotal, $cupon_aplicado, $descuento, $monto_total, $eta_total);
+
+            if ($stmt->execute()) { header("Location: index.php?status=pedido_ok"); exit(); } else { $error = "Error: " . $conexion->error; }
+        } else {
+            $error = "Por favor, complete todos los campos obligatorios del pedido.";
+        }
     }
 }
 
@@ -231,6 +281,7 @@ if (isset($_GET['status'])) {
     if ($_GET['status'] === 'cliente_ok') $mensaje = "Cliente registrado correctamente.";
     if ($_GET['status'] === 'local_ok') $mensaje = "Local registrado correctamente.";
     if ($_GET['status'] === 'cupon_ok') $mensaje = "Cupón registrado correctamente.";
+    if ($_GET['status'] === 'pedido_ok') $mensaje = "Pedido de prueba creado correctamente.";
 }
 
 $clientes_list = $conexion->query("SELECT * FROM clientes ORDER BY id_cliente DESC");
@@ -251,32 +302,17 @@ $pedidos_list = $conexion->query("SELECT p.*, c.nombre_cliente, r.nombre_restaur
             <span class="method get">GET</span> <strong>1. Listar Clientes</strong>
             <code>http://localhost/chimbotefood/index.php?servicio=ListarClientes</code>
         </div>
-
         <div class="endpoint-box">
             <span class="method get">GET</span> <strong>2. Listar Restaurantes</strong>
             <code>http://localhost/chimbotefood/index.php?servicio=ListarRestaurantes</code>
         </div>
-
         <div class="endpoint-box">
-            <span class="method get">GET</span> <strong>3. Listar Cupones</strong>
-            <code>http://localhost/chimbotefood/index.php?servicio=ListarCupones</code>
-        </div>
-
-        <div class="endpoint-box">
-            <span class="method get">GET</span> <strong>4. Validar Cupón (Parámetros URL)</strong>
-            <code>http://localhost/chimbotefood/index.php?servicio=ValidarCupon&codigo_cupon=OFERTA20&subtotal=50.00</code>
-        </div>
-
-        <div class="endpoint-box">
-            <span class="method post">POST</span> <strong>5. Validar Cupón (Body JSON)</strong>
+            <span class="method post">POST</span> <strong>3. Validar Cupón (Body JSON)</strong>
             <code>http://localhost/chimbotefood/index.php?servicio=ValidarCupon</code>
-            <small style="display:block; margin-top:5px; color:#666;">Payload JSON: <code>{"codigo_cupon": "OFERTA20", "subtotal": 50.00}</code></small>
         </div>
-
         <div class="endpoint-box">
-            <span class="method post">POST</span> <strong>6. Crear Pedido con Cupón (Body JSON)</strong>
+            <span class="method post">POST</span> <strong>4. Crear Pedido (Body JSON)</strong>
             <code>http://localhost/chimbotefood/index.php?servicio=CrearPedido</code>
-            <small style="display:block; margin-top:5px; color:#666;">Payload JSON: <code>{"id_cliente": 1, "id_restaurante": 1, "producto": "Pollo a la Brasa", "subtotal": 60.00, "codigo_cupon": "OFERTA20"}</code></small>
         </div>
     </div>
     <!-- FIN DE LA SECCIÓN VISIBLE DE ENDPOINTS -->
@@ -286,7 +322,7 @@ $pedidos_list = $conexion->query("SELECT p.*, c.nombre_cliente, r.nombre_restaur
 
     <div class="grid">
         <div class="card">
-            <h2>Registrar Cliente (Caja Negra)</h2>
+            <h2>Registrar Cliente</h2>
             <form method="POST">
                 <input type="hidden" name="action" value="crear_cliente">
                 <div class="form-group"><label>Nombre:</label><input type="text" name="nombre_cliente" required></div>
@@ -296,7 +332,7 @@ $pedidos_list = $conexion->query("SELECT p.*, c.nombre_cliente, r.nombre_restaur
             </form>
         </div>
         <div class="card">
-            <h2>Registrar Local (Caja Negra)</h2>
+            <h2>Registrar Local</h2>
             <form method="POST">
                 <input type="hidden" name="action" value="crear_local">
                 <div class="form-group"><label>Nombre del Local:</label><input type="text" name="nombre_restaurante" required></div>
@@ -305,7 +341,7 @@ $pedidos_list = $conexion->query("SELECT p.*, c.nombre_cliente, r.nombre_restaur
             </form>
         </div>
         <div class="card">
-            <h2>Crear Cupón (Caja Negra)</h2>
+            <h2>Crear Cupón</h2>
             <form method="POST">
                 <input type="hidden" name="action" value="crear_cupon">
                 <div class="form-group"><label>Código Cupón:</label><input type="text" name="codigo" required></div>
@@ -315,41 +351,74 @@ $pedidos_list = $conexion->query("SELECT p.*, c.nombre_cliente, r.nombre_restaur
                 <button type="submit" class="btn-blue">Crear Cupón</button>
             </form>
         </div>
+        
+        <!-- NUEVO MÓDULO: CREAR PEDIDO DE PRUEBA -->
+        <div class="card">
+            <h2>Simular Pedido (UI)</h2>
+            <form method="POST">
+                <input type="hidden" name="action" value="crear_pedido">
+                
+                <div class="form-group">
+                    <label>Cliente:</label>
+                    <select name="id_cliente" required>
+                        <option value="">Seleccione...</option>
+                        <?php 
+                        // Reposicionamos puntero por si se usó arriba
+                        $clientes_list->data_seek(0);
+                        while($c = $clientes_list->fetch_assoc()): 
+                        ?>
+                            <option value="<?= $c['id_cliente'] ?>"><?= $c['nombre_cliente'] ?></option>
+                        <?php endwhile; ?>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label>Restaurante:</label>
+                    <select name="id_restaurante" required>
+                        <option value="">Seleccione...</option>
+                        <?php 
+                        $restaurantes_list->data_seek(0);
+                        while($r = $restaurantes_list->fetch_assoc()): 
+                        ?>
+                            <option value="<?= $r['id_restaurante'] ?>"><?= $r['nombre_restaurante'] ?></option>
+                        <?php endwhile; ?>
+                    </select>
+                </div>
+
+                <!-- CAMPO SELECCIONABLE Y ESCRIBIBLE (Combobox) -->
+                <div class="form-group">
+                    <label>Producto:</label>
+                    <input type="text" name="producto" list="lista_productos" required autocomplete="off" placeholder="Seleccione o escriba uno nuevo...">
+                    <datalist id="lista_productos">
+                        <option value="Pollo a la Brasa">
+                        <option value="Ceviche Clásico">
+                        <option value="Lomo Saltado">
+                        <option value="Chaufa de Mariscos">
+                        <option value="Pizza Familiar">
+                        <option value="Hamburguesa Royal">
+                        <option value="Caldo de Gallina">
+                    </datalist>
+                </div>
+
+                <div class="form-group">
+                    <label>Subtotal ($):</label>
+                    <input type="number" step="0.01" name="subtotal" required>
+                </div>
+
+                <div class="form-group">
+                    <label>Código Cupón (Opcional):</label>
+                    <input type="text" name="codigo_cupon" placeholder="Ej. OFERTA20">
+                </div>
+
+                <button type="submit" class="btn-warning">Crear Pedido</button>
+            </form>
+        </div>
     </div>
 
     <hr style="border-top: 2px solid #007bff; margin: 30px 0;">
     <h2>Auditoría de Datos Generados (Vista Proveedor)</h2>
 
-    <div class="grid">
-        <div style="flex: 1;">
-            <h3>Directorio de Clientes</h3>
-            <table>
-                <tr><th>ID</th><th>Nombre</th><th>Distancia</th></tr>
-                <?php while($cli = $clientes_list->fetch_assoc()): ?>
-                    <tr><td><?= $cli['id_cliente']; ?></td><td><?= $cli['nombre_cliente']; ?></td><td><?= $cli['distancia_km']; ?> KM</td></tr>
-                <?php endwhile; ?>
-            </table>
-        </div>
-        <div style="flex: 1;">
-            <h3>Catálogo de Restaurantes</h3>
-            <table>
-                <tr><th>ID</th><th>Restaurante</th><th>Prep. Base</th></tr>
-                <?php while($res = $restaurantes_list->fetch_assoc()): ?>
-                    <tr><td><?= $res['id_restaurante']; ?></td><td><?= $res['nombre_restaurante']; ?></td><td><?= $res['tiempo_preparacion_base']; ?> min</td></tr>
-                <?php endwhile; ?>
-            </table>
-        </div>
-    </div>
-
-    <h3>Cupones Activos</h3>
-    <table>
-        <tr><th>ID</th><th>Código</th><th>Tipo</th><th>Valor</th><th>Monto Mínimo</th></tr>
-        <?php while($cup = $cupones_list->fetch_assoc()): ?>
-            <tr><td><?= $cup['id_cupon']; ?></td><td><strong><?= $cup['codigo']; ?></strong></td><td><?= $cup['tipo_descuento']; ?></td><td><?= $cup['valor_descuento']; ?></td><td>$<?= $cup['monto_minimo']; ?></td></tr>
-        <?php endwhile; ?>
-    </table>
-
-    <h3>Historial de Pedidos Procesados (Vía API o Interno)</h3>
+    <h3>Historial de Pedidos Procesados</h3>
     <table>
         <tr><th>ID</th><th>Cliente</th><th>Local</th><th>Producto</th><th>Cupón</th><th>Descuento</th><th>Total Final</th><th>ETA</th></tr>
         <?php while($p = $pedidos_list->fetch_assoc()): ?>
