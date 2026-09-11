@@ -3,6 +3,7 @@ require_once '../../conexion.php';
 
 header('Content-Type: application/json; charset=utf-8');
 validarMetodo('GET');
+validarToken();
 
 $res = $conexion->query("SELECT * FROM clientes ORDER BY id_cliente DESC");
 if (!$res) {

@@ -18,12 +18,16 @@ $conexion->set_charset("utf8mb4");
 
 // Función reutilizable para la capa de seguridad SOA
 function validarToken() {
-    $token = $_SERVER['HTTP_AUTHORIZATION'] ?? '';
+    $token = $_SERVER['HTTP_AUTHORIZATION'] ?? $_SERVER['REDIRECT_HTTP_AUTHORIZATION'] ?? '';
     if ($token === '' && function_exists('apache_request_headers')) {
         $headers = apache_request_headers();
         $token = $headers['Authorization'] ?? $headers['authorization'] ?? '';
     }
-    
+
+    if (hash_equals('Bearer chimbote_seguro_2026', trim($token))) {
+        return;
+    }
+
     if ($token !== 'Bearer chimbote_seguro_2026') {
         responderError('No autorizado. Token inválido o ausente.', 401);
     }

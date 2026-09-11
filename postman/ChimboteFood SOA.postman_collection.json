@@ -1,0 +1,108 @@
+{
+  "info": {
+    "_postman_id": "c68d3f0c-12a8-4f6d-9dff-95eb420cbac1",
+    "name": "ChimboteFood SOA",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "57979906",
+    "_collection_link": "https://go.postman.co/collection/57979906-c68d3f0c-12a8-4f6d-9dff-95eb420cbac1?source=collection_link"
+  },
+  "item": [
+    {
+      "name": "api_listar_cupones",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": ""
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "api_listar_clientes",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "http://localhost/chimbotefood/apis/get/api_listar_clientes.php",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "path": [
+            "chimbotefood",
+            "apis",
+            "get",
+            "api_listar_clientes.php"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "api_listar_restaurantes",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "http://localhost/chimbotefood/apis/get/api_listar_locales.php",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "path": [
+            "chimbotefood",
+            "apis",
+            "get",
+            "api_listar_locales.php"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "api_crear_pedido",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "url": {
+          "raw": ""
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "api_crear_cupon",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "url": {
+          "raw": ""
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "api_validar_cupon",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "url": {
+          "raw": ""
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "api_probar_cupon_pedido",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "url": {
+          "raw": ""
+        }
+      },
+      "response": []
+    }
+  ]
+}
