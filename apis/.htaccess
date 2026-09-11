@@ -1,0 +1,8 @@
+ErrorDocument 400 /chimbotefood/apis/error_404.php
+ErrorDocument 401 /chimbotefood/apis/error_404.php
+ErrorDocument 403 /chimbotefood/apis/error_404.php
+ErrorDocument 404 /chimbotefood/apis/error_404.php
+ErrorDocument 405 /chimbotefood/apis/error_404.php
+ErrorDocument 409 /chimbotefood/apis/error_404.php
+ErrorDocument 422 /chimbotefood/apis/error_404.php
+ErrorDocument 500 /chimbotefood/apis/error_404.php
